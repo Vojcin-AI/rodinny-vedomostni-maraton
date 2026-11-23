@@ -163,10 +163,15 @@ def admin_start_quiz():
     if not session.get('admin'):
         return jsonify({'error': 'Unauthorized'}), 401
     
+    # Reset otázek, ale ZACHOVAT registrované týmy!
     quiz_data.quiz_state = 'playing'
     quiz_data.question_index = 0
     quiz_data.start_time = datetime.now().isoformat()
-    quiz_data.teams = {}  # Reset týmů
+    
+    # Resetuj jen odpovědi, ne týmy samotné
+    for team_id in quiz_data.teams:
+        quiz_data.teams[team_id]['answers'] = {}
+        quiz_data.teams[team_id]['score'] = 0
     
     return jsonify({'success': True, 'message': 'Kvíz spuštěn!'})
 
