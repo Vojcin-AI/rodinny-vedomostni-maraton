@@ -1,6 +1,6 @@
 # 🎬 RODINNÝ VĚDOMOSTNÍ MARATON 🎮
 
-Interaktivní webová aplikace pro rodinný quiz s podporou QR kódů, real-time leaderboardu a timeru.
+Interaktivní webová aplikace pro rodinný kvíz s QR registrací týmů a průběžným přehledem odpovědí.
 
 ## 🚀 Jak to funguje?
 
@@ -24,13 +24,14 @@ App běží na: `http://localhost:5000`
 
 ### 5. **Admin spustí kvíz**
 - Klikne "Spustit Kvíz"
-- Postupně klika "Další Otázka →"
-- Každé otázce je 30 sekund na odpověď
+- Zobrazí se první otázka
+- Další otázku lze otevřít až poté, co odpoví všechny registrované týmy
 
 ### 6. **Týmy odpovídají**
-- Vidí otázku a timer na svých mobilech
+- Vidí otázku na svých mobilech; časový limit se nepoužívá
 - Zadají odpověď a odešlou ji
-- Hned vidí, jestli byli správní/špatní
+- Admin vidí, kdo píše odpověď, kdo ji už odeslal a kdo ještě čeká
+- Správnost odpovědí se týmům během kola nezobrazuje
 
 ### 7. **Leaderboard se aktualizuje live**
 - Na velkém displeji: `http://localhost:5000/leaderboard`
@@ -57,7 +58,7 @@ App běží na: `http://localhost:5000`
 ### **Varianta C: Papírová forma (Ultimate Fallback)**
 - Pokud nefunguje nic
 - Týmy odpovídají na papír
-- Admin ručně zadá skóre do panelu (můžeme doplnit)
+- Pro rozhodnutí remízy lze použít samostatnou doplňující otázku
 
 ---
 

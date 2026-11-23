@@ -97,6 +97,8 @@ class QuizData:
             'name': team_name,
             'score': 0,
             'answers': {},
+            'typing_question_id': None,
+            'last_activity_at': None,
             'registered_at': datetime.now().isoformat()
         }
         return team_id
@@ -166,6 +168,7 @@ def admin_start_quiz():
     # Reset otázek, ale ZACHOVAT registrované týmy!
     quiz_data.quiz_state = 'playing'
     quiz_data.question_index = 0
+    quiz_data.current_question = None
     quiz_data.start_time = datetime.now().isoformat()
     
     # Resetuj jen odpovědi, ne týmy samotné
@@ -180,10 +183,27 @@ def admin_next_question():
     """Jdi na další otázku"""
     if not session.get('admin'):
         return jsonify({'error': 'Unauthorized'}), 401
+
+    if quiz_data.current_question:
+        question_id = quiz_data.current_question['id']
+        unanswered = [
+            team['name']
+            for team in quiz_data.teams.values()
+            if question_id not in team['answers']
+        ]
+        if unanswered:
+            return jsonify({
+                'success': False,
+                'error': 'Na odpověď ještě čeká část týmů.',
+                'unanswered_teams': unanswered
+            }), 409
     
     if quiz_data.question_index < len(quiz_data.questions):
         quiz_data.current_question = quiz_data.questions[quiz_data.question_index]
         quiz_data.question_index += 1
+        for team in quiz_data.teams.values():
+            team['typing_question_id'] = None
+            team['last_activity_at'] = None
         return jsonify({
             'success': True,
             'question': quiz_data.current_question,
@@ -217,9 +237,34 @@ def admin_leaderboard():
     if not session.get('admin'):
         return jsonify({'error': 'Unauthorized'}), 401
     
+    teams = quiz_data.get_leaderboard()
+    current_question_id = (
+        quiz_data.current_question['id'] if quiz_data.current_question else None
+    )
+    answered_count = 0
+
+    for team in teams:
+        team_data = quiz_data.teams[team['team_id']]
+        if quiz_data.quiz_state != 'playing' or current_question_id is None:
+            team['answer_status'] = 'inactive'
+        elif current_question_id in team_data['answers']:
+            team['answer_status'] = 'answered'
+            answered_count += 1
+        elif (
+            team_data.get('typing_question_id') == current_question_id
+            and team_data.get('last_activity_at') is not None
+            and datetime.now().timestamp() - team_data['last_activity_at'] <= 10
+        ):
+            team['answer_status'] = 'typing'
+        else:
+            team['answer_status'] = 'waiting'
+
     return jsonify({
-        'leaderboard': quiz_data.get_leaderboard(),
-        'quiz_state': quiz_data.quiz_state
+        'leaderboard': teams,
+        'quiz_state': quiz_data.quiz_state,
+        'answered_count': answered_count,
+        'registered_count': len(teams),
+        'all_answered': bool(teams) and answered_count == len(teams)
     })
 
 @app.route('/api/admin/reset', methods=['POST'])
@@ -292,10 +337,33 @@ def team_status():
         'total_questions': len(quiz_data.questions)
     })
 
+@app.route('/api/team/activity', methods=['POST'])
+def team_activity():
+    """Označ tým jako rozepisující odpověď na aktuální otázku."""
+    data = request.json or {}
+    team_id = data.get('team_id')
+    question_id = data.get('question_id')
+
+    if team_id not in quiz_data.teams:
+        return jsonify({'error': 'Tým nenalezen'}), 404
+    if (
+        quiz_data.quiz_state != 'playing'
+        or not quiz_data.current_question
+        or question_id != quiz_data.current_question['id']
+    ):
+        return jsonify({'error': 'Tato otázka už není aktivní'}), 409
+    if question_id in quiz_data.teams[team_id]['answers']:
+        return jsonify({'error': 'Odpověď už byla odeslána'}), 409
+
+    team = quiz_data.teams[team_id]
+    team['typing_question_id'] = question_id
+    team['last_activity_at'] = datetime.now().timestamp()
+    return jsonify({'success': True})
+
 @app.route('/api/team/submit-answer', methods=['POST'])
 def team_submit_answer():
     """Odešli odpověď"""
-    data = request.json
+    data = request.json or {}
     team_id = data.get('team_id')
     question_id = data.get('question_id')
     answer = data.get('answer', '').strip()
@@ -305,6 +373,16 @@ def team_submit_answer():
     
     if team_id not in quiz_data.teams:
         return jsonify({'error': 'Tým nenalezen'}), 404
+
+    if (
+        quiz_data.quiz_state != 'playing'
+        or not quiz_data.current_question
+        or question_id != quiz_data.current_question['id']
+    ):
+        return jsonify({'error': 'Tato otázka už není aktivní'}), 409
+
+    if question_id in quiz_data.teams[team_id]['answers']:
+        return jsonify({'error': 'Odpověď už byla odeslána'}), 409
     
     is_correct = quiz_data.submit_answer(team_id, question_id, answer)
     

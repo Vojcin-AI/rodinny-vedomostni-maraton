@@ -40,7 +40,7 @@
                     <h3>🎮 Správa Kvízu</h3>
                     <div class="button-group">
                         <button onclick="startQuiz()" class="btn btn-success" id="startBtn">Spustit Kvíz</button>
-                        <button onclick="nextQuestion()" class="btn btn-primary" id="nextBtn" style="display: none;">Další Otázka →</button>
+                        <button onclick="nextQuestion()" class="btn btn-primary" id="nextBtn" style="display: none;" disabled>Další Otázka →</button>
                         <button onclick="endQuiz()" class="btn btn-danger" id="endBtn" style="display: none;">Ukončit Kvíz</button>
                         <button onclick="resetQuiz()" class="btn btn-secondary">Reset</button>
                     </div>
@@ -52,7 +52,7 @@
                     <div id="currentQuestionDisplay" class="question-display">
                         <p><em>Žádná otázka není aktivní</em></p>
                     </div>
-                    <div id="timerDisplay" class="timer">0s</div>
+                    <div id="answerProgress" class="answer-progress">Kvíz ještě nezačal</div>
                 </div>
 
                 <!-- Počet Registrovaných Týmů -->
@@ -70,12 +70,13 @@
                         <tr>
                             <th>#</th>
                             <th>Tým</th>
+                            <th>Stav odpovědi</th>
                             <th>Skóre</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td colspan="3" style="text-align: center; padding: 20px; color: #999;">
+                            <td colspan="4" style="text-align: center; padding: 20px; color: #999;">
                                 Leaderboard se zobrazí po spuštění kvízu
                             </td>
                         </tr>
@@ -90,8 +91,6 @@
         let adminLoggedIn = false;
         let quizRunning = false;
         let currentQuestion = null;
-        let timerInterval = null;
-        let timeLeft = 30;
 
         // ==================== ADMIN LOGIN ====================
         function adminLogin() {
@@ -103,6 +102,10 @@
             })
             .then(r => r.json())
             .then(data => {
+                if (!data.success) {
+                    document.getElementById('loginError').textContent = data.error || 'Přihlášení se nezdařilo.';
+                    return;
+                }
                 if (data.success) {
                     adminLoggedIn = true;
                     document.getElementById('loginSection').style.display = 'none';
@@ -129,12 +132,19 @@
             })
             .then(r => r.json())
             .then(data => {
+                if (!data.success) {
+                    alert(data.error || 'Kvíz se nepodařilo spustit.');
+                    return;
+                }
                 quizRunning = true;
                 document.getElementById('startBtn').style.display = 'none';
                 document.getElementById('nextBtn').style.display = 'inline-block';
                 document.getElementById('endBtn').style.display = 'inline-block';
-                alert('✅ Kvíz spuštěn! Týmy se mohou registrovat.');
                 nextQuestion();
+            })
+            .catch(error => {
+                alert('Kvíz se nepodařilo spustit. Zkontroluj připojení.');
+                console.error('Spuštění kvízu selhalo:', error);
             });
         }
 
@@ -148,12 +158,18 @@
                 if (data.success) {
                     currentQuestion = data.question;
                     updateQuestionDisplay();
-                    startTimer();
                     updateLeaderboard();
                 } else if (data.quiz_state === 'finished') {
                     alert('✅ Všechny otázky zodpovězeny!');
                     endQuiz();
+                } else {
+                    alert(data.error || 'Další otázku nelze spustit.');
+                    updateLeaderboard();
                 }
+            })
+            .catch(error => {
+                alert('Další otázku se nepodařilo spustit. Zkontroluj připojení.');
+                console.error('Načtení další otázky selhalo:', error);
             });
         }
 
@@ -165,7 +181,6 @@
             .then(r => r.json())
             .then(data => {
                 quizRunning = false;
-                clearInterval(timerInterval);
                 document.getElementById('nextBtn').style.display = 'none';
                 document.getElementById('endBtn').style.display = 'none';
                 document.getElementById('startBtn').style.display = 'inline-block';
@@ -183,42 +198,14 @@
                 .then(r => r.json())
                 .then(data => {
                     quizRunning = false;
-                    clearInterval(timerInterval);
                     document.getElementById('startBtn').style.display = 'inline-block';
                     document.getElementById('nextBtn').style.display = 'none';
                     document.getElementById('endBtn').style.display = 'none';
                     document.getElementById('currentQuestionDisplay').innerHTML = '<p><em>Žádná otázka není aktivní</em></p>';
-                    document.getElementById('timerDisplay').textContent = '0s';
+                    document.getElementById('answerProgress').textContent = 'Kvíz ještě nezačal';
                     updateLeaderboard();
                     alert('✅ Kvíz resetován');
                 });
-            }
-        }
-
-        // ==================== TIMER ====================
-        function startTimer() {
-            clearInterval(timerInterval);
-            timeLeft = 30;
-            updateTimerDisplay();
-            
-            timerInterval = setInterval(() => {
-                timeLeft--;
-                updateTimerDisplay();
-                
-                if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    alert('⏱️ Čas vypršel! Přejdi na další otázku.');
-                }
-            }, 1000);
-        }
-
-        function updateTimerDisplay() {
-            const display = document.getElementById('timerDisplay');
-            display.textContent = timeLeft + 's';
-            if (timeLeft <= 10) {
-                display.style.color = '#e74c3c';
-            } else {
-                display.style.color = '#27ae60';
             }
         }
 
@@ -244,22 +231,45 @@
             .then(r => r.json())
             .then(data => {
                 // Update teams count
-                document.getElementById('teamsCount').textContent = `${Object.keys(data.leaderboard).length} týmů`;
+                document.getElementById('teamsCount').textContent = `${data.registered_count} týmů`;
+                document.getElementById('answerProgress').textContent =
+                    `${data.answered_count} z ${data.registered_count} týmů odpovědělo`;
+                document.getElementById('nextBtn').disabled =
+                    !data.all_answered || data.quiz_state !== 'playing';
                 
                 // Update leaderboard table
                 const tbody = document.querySelector('#adminLeaderboard tbody');
                 if (data.leaderboard.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #999;">Zatím žádné týmy</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #999;">Zatím žádné týmy</td></tr>';
                 } else {
                     tbody.innerHTML = data.leaderboard.map(team => `
                         <tr>
                             <td>${team.position}</td>
-                            <td>${team.name}</td>
+                            <td>${escapeHtml(team.name)}</td>
+                            <td>${answerStatusLabel(team.answer_status)}</td>
                             <td><strong>${team.score}</strong></td>
                         </tr>
                     `).join('');
                 }
-            });
+            })
+            .catch(error => console.error('Aktualizace seznamu týmů selhala:', error));
+        }
+
+        function answerStatusLabel(status) {
+            if (status === 'answered') return '✅ Odpověděl';
+            if (status === 'typing') return '✍️ Píše odpověď';
+            if (status === 'waiting') return '⏳ Čeká na odpověď';
+            return '—';
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
         }
 
         // ==================== QR CODE ====================

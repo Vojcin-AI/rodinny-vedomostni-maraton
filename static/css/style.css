@@ -338,33 +338,15 @@ p {
    TIMER
    ============================================================================ */
 
-.timer {
+.answer-progress {
     font-size: 2rem;
     font-weight: bold;
-    color: var(--color-success);
+    color: var(--color-secondary);
     padding: 1rem;
     text-align: center;
     background: var(--color-light);
     border-radius: var(--radius);
     margin: 1rem 0;
-    font-family: 'Courier New', monospace;
-}
-
-.timer-large {
-    font-size: 4rem;
-    padding: 2rem;
-    color: var(--color-secondary);
-}
-
-.timer-box {
-    text-align: center;
-    margin: 2rem 0;
-}
-
-.timer-label {
-    color: #7f8c8d;
-    font-size: 1.1rem;
-    margin-top: 0.5rem;
 }
 
 /* ============================================================================
@@ -725,10 +707,6 @@ p {
         gap: 1rem;
     }
 
-    .timer-large {
-        font-size: 3rem;
-    }
-
     .question-text {
         font-size: 1.1rem;
     }
@@ -763,10 +741,6 @@ p {
     .input-field {
         padding: 0.6rem 0.8rem;
         font-size: 16px; /* Prevent zoom on iOS */
-    }
-
-    .timer-large {
-        font-size: 2.5rem;
     }
 
     .btn-large {

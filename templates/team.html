@@ -31,18 +31,13 @@
             <!-- Čeká se na otázku -->
             <div id="waitingForQuestion" class="waiting-box">
                 <h3>⏳ Čekáme na otázku...</h3>
-                <p>Admin právě spouští kvíz. Tvoje odpovědi se budou odesílat automaticky.</p>
+                <p>Odpověď odešli, až bude váš tým rozhodnutý. Moderátor počká, než odpoví všechny týmy.</p>
                 <div class="spinner"></div>
             </div>
 
             <!-- Otázka a Odpověď -->
             <div id="questionBox" class="question-box" style="display: none;">
                 <div id="questionText" class="question-text"></div>
-                
-                <div class="timer-box">
-                    <div id="questionTimer" class="timer-large">30</div>
-                    <div class="timer-label">sekund na odpověď</div>
-                </div>
 
                 <div class="answer-section">
                     <input type="text" id="answerInput" placeholder="Zadej odpověď..." class="input-field input-large">
@@ -68,9 +63,7 @@
         let currentQuestion = null;
         let quizState = 'waiting';
         let answered = false;
-        let questionTimer = null;
-        let timeLeft = 30;
-        const TIMER_DURATION = 30;
+        let activityTimeout = null;
 
         // ==================== REGISTRATION ====================
         function registerTeam() {
@@ -155,36 +148,24 @@
             
             document.getElementById('answerInput').focus();
             
-            startQuestionTimer();
         }
 
-        function startQuestionTimer() {
-            clearInterval(questionTimer);
-            timeLeft = TIMER_DURATION;
-            updateTimerDisplay();
-            
-            questionTimer = setInterval(() => {
-                timeLeft--;
-                updateTimerDisplay();
-                
-                if (timeLeft <= 0) {
-                    clearInterval(questionTimer);
-                    if (!answered) {
-                        document.getElementById('answerInput').disabled = true;
-                    }
-                }
-            }, 1000);
-        }
-
-        function updateTimerDisplay() {
-            const display = document.getElementById('questionTimer');
-            display.textContent = timeLeft;
-            
-            if (timeLeft <= 10) {
-                display.style.color = '#e74c3c';
-            } else {
-                display.style.color = '#27ae60';
+        function reportTyping() {
+            clearTimeout(activityTimeout);
+            if (!currentQuestion || answered || !document.getElementById('answerInput').value.trim()) {
+                return;
             }
+
+            activityTimeout = setTimeout(() => {
+                fetch(`${API_BASE}/team/activity`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        team_id: teamId,
+                        question_id: currentQuestion.id
+                    })
+                }).catch(error => console.error('Nepodařilo se aktualizovat stav týmu:', error));
+            }, 400);
         }
 
         // ==================== ANSWER SUBMISSION ====================
@@ -200,9 +181,9 @@
                 alert('❌ Zadej odpověď!');
                 return;
             }
-
             answered = true;
-            clearInterval(questionTimer);
+            answered = true;
+            answered = true;
 
             fetch(`${API_BASE}/team/submit-answer`, {
                 method: 'POST',
@@ -215,31 +196,31 @@
             })
             .then(r => r.json())
             .then(data => {
-                // Show feedback
                 const feedbackEl = document.getElementById('answerFeedback');
                 feedbackEl.style.display = 'block';
-                
-                if (data.is_correct) {
-                    feedbackEl.className = 'feedback-box feedback-correct';
-                    feedbackEl.innerHTML = `
-                        <h3>✅ SPRÁVNĚ!</h3>
-                        <p>Tvoje odpověď: <strong>${answer}</strong></p>
-                        <p>Nový skóre: <strong>${data.score}</strong> bodů</p>
-                    `;
-                } else {
+                if (!data.success) {
+                    answered = false;
                     feedbackEl.className = 'feedback-box feedback-wrong';
-                    feedbackEl.innerHTML = `
-                        <h3>❌ Bohužel špatně</h3>
-                        <p>Tvoje odpověď: <strong>${answer}</strong></p>
-                        <p>Správná odpověď: <strong>${currentQuestion.correct_answers.join(', ')}</strong></p>
-                    `;
+                    feedbackEl.textContent = data.error || 'Odpověď se nepodařilo odeslat. Zkus to znovu.';
+                    return;
                 }
 
-                // Disable input
+                feedbackEl.className = 'feedback-box feedback-correct';
+                feedbackEl.textContent = '✅ Odpověď odeslána. Čekáme, až odpoví ostatní týmy.';
                 document.getElementById('answerInput').disabled = true;
                 document.querySelector('button[onclick="submitAnswer()"]').disabled = true;
+            })
+            .catch(error => {
+                answered = false;
+                const feedbackEl = document.getElementById('answerFeedback');
+                feedbackEl.style.display = 'block';
+                feedbackEl.className = 'feedback-box feedback-wrong';
+                feedbackEl.textContent = 'Chyba připojení. Zkontroluj internet a zkus odeslat znovu.';
+                console.error('Odeslání odpovědi se nezdařilo:', error);
             });
         }
+
+        document.getElementById('answerInput').addEventListener('input', reportTyping);
 
         // ==================== QUIZ END ====================
         function finishQuiz() {
