@@ -1,5 +1,7 @@
 import unittest
 from unittest.mock import patch
+import re
+import time
 
 import quiz_backend
 
@@ -83,6 +85,7 @@ class QuizFlowTest(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         credentials = response.get_json()
+        self.assertRegex(credentials['login_code'], re.compile(r'^\d{4}$'))
 
         login = self.client.post(
             '/api/team/login',
@@ -96,6 +99,59 @@ class QuizFlowTest(unittest.TestCase):
         self.assertEqual(public_board.status_code, 200)
         public_team = public_board.get_json()['leaderboard'][0]
         self.assertNotIn('login_code', public_team)
+        self.assertTrue(public_team['login_status'])
+        self.assertNotIn('login_code', self.client.get('/api/admin/leaderboard').get_json()['leaderboard'][0])
+
+        self.data.teams[credentials['team_id']]['last_seen_at'] = None
+        offline_board = quiz_backend.app.test_client().get('/api/leaderboard').get_json()
+        self.assertFalse(offline_board['leaderboard'][0]['login_status'])
+        presence = quiz_backend.app.test_client().post(
+            '/api/team/presence',
+            json={'team_id': credentials['team_id']},
+        )
+        self.assertEqual(presence.status_code, 200)
+        updated_board = quiz_backend.app.test_client().get('/api/leaderboard').get_json()
+        self.assertTrue(updated_board['leaderboard'][0]['login_status'])
+
+    def test_only_four_digit_pin_is_accepted(self):
+        response = self.client.post(
+            '/api/admin/teams',
+            json={'team_name': 'PIN test'},
+        )
+        pin = response.get_json()['login_code']
+        for invalid_pin in (pin[:3], 'ABCD', 1234):
+            login = self.client.post(
+                '/api/team/login',
+                json={'login_code': invalid_pin},
+            )
+            self.assertEqual(login.status_code, 400)
+
+    def test_public_board_shows_login_and_answer_states_without_pin(self):
+        team_id, pin = self.data.create_team_with_login_code('Veřejný tým')
+        self.assertRegex(pin, r'^\d{4}$')
+        team = self.data.teams[team_id]
+        team['last_seen_at'] = time.time() - 30
+
+        self.client.post('/api/admin/start-quiz')
+        question = self.client.post('/api/admin/next-question').get_json()['question']
+        board = quiz_backend.app.test_client().get('/api/leaderboard').get_json()
+        public_team = board['leaderboard'][0]
+        self.assertFalse(public_team['login_status'])
+        self.assertEqual(public_team['answer_status'], 'waiting')
+        self.assertNotIn('login_code', public_team)
+
+        team['last_seen_at'] = time.time()
+        self.client.post(
+            '/api/team/submit-answer',
+            json={
+                'team_id': team_id,
+                'question_id': question['id'],
+                'answer': 'Matěj',
+            },
+        )
+        public_team = quiz_backend.app.test_client().get('/api/leaderboard').get_json()['leaderboard'][0]
+        self.assertTrue(public_team['login_status'])
+        self.assertEqual(public_team['answer_status'], 'answered')
 
     def test_response_time_is_accumulated_but_does_not_change_ranking(self):
         first_team = self.register_team('Rychlý')

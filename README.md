@@ -25,9 +25,9 @@ App běží na: `http://localhost:5000`
 
 ### Ruční vytvoření týmu
 - V admin panelu zadej jméno do sekce „Přidat tým ručně“
-- Předej týmu zobrazený přihlašovací kód
-- Tým otevře běžnou stránku `/team`, zadá kód v části „Přihlásit předem vytvořený tým“ a přihlásí se ke svému účtu
-- Kód je možné použít znovu; přihlášený tým se v prohlížeči zapamatuje
+- Předej týmu zobrazený čtyřmístný PIN
+- Tým otevře běžnou stránku `/team`, zadá PIN v části „Přihlásit předem vytvořený tým“ a přihlásí se ke svému účtu
+- PIN je možné použít znovu; přihlášený tým se v prohlížeči zapamatuje
 
 ### 5. **Admin spustí kvíz**
 - Klikne "Spustit Kvíz"
@@ -39,6 +39,7 @@ App běží na: `http://localhost:5000`
 - Zadají odpověď a odešlou ji
 - Doba od zveřejnění otázky do odeslání se měří a sčítá pouze jako informativní údaj
 - Admin vidí, kdo píše odpověď, kdo ji už odeslal a kdo ještě čeká
+- Veřejná stránka `/leaderboard` zobrazuje stav přihlášení i odpovědi; PINy se v tabulce nezobrazují
 - Správnost odpovědí se týmům během kola nezobrazuje
 
 ### 7. **Leaderboard se aktualizuje live**
@@ -141,12 +142,13 @@ def load_quiz(self):
 - `POST /api/admin/reset` - Reset
 - `GET /api/admin/leaderboard` - Leaderboard
 - `GET /api/leaderboard` - Veřejný přehled skóre a online časů
-- `POST /api/admin/teams` - Ruční vytvoření týmu a přihlašovacího kódu
+- `POST /api/admin/teams` - Ruční vytvoření týmu a čtyřmístného PINu
 - `GET /api/admin/qr-code` - QR kód
 
 ### Team
 - `POST /api/team/register` - Registrace týmu
-- `POST /api/team/login` - Přihlášení předem vytvořeného týmu
+- `POST /api/team/login` - Přihlášení předem vytvořeného týmu čtyřmístným PINem
+- `POST /api/team/presence` - Aktualizace online stavu týmu
 - `GET /api/team/status` - Status kvízu
 - `POST /api/team/submit-answer` - Odeslání odpovědi
 - `GET /api/team/score/<team_id>` - Skóre týmu

@@ -18,13 +18,15 @@
                 <tr>
                     <th class="position-col">#</th>
                     <th class="team-col">🎯 TÝM</th>
+                    <th>📱 PŘIHLÁŠENÍ</th>
+                    <th>✍️ ODPOVĚĎ</th>
                     <th class="score-col">📊 SKÓRE</th>
                     <th class="score-col">⏱️ ČAS ODPOVĚDÍ</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="4" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
+                    <td colspan="6" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
                         ⏳ Čeká se na start kvízu...
                     </td>
                 </tr>
@@ -63,7 +65,7 @@
                 if (data.leaderboard.length === 0) {
                     tbody.innerHTML = `
                         <tr>
-                            <td colspan="4" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
+                            <td colspan="6" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
                                 ⏳ Čeká se na registraci týmů...
                             </td>
                         </tr>
@@ -77,6 +79,8 @@
                                 </div>
                             </td>
                             <td class="team-col">${escapeHtml(team.name)}</td>
+                            <td>${loginStatusLabel(team.login_status)}</td>
+                            <td>${answerStatusLabel(team.answer_status)}</td>
                             <td class="score-col">
                                 <strong>${team.score}</strong>
                             </td>
@@ -98,6 +102,19 @@
                 '"': '&quot;',
                 "'": '&#39;'
             })[character]);
+        }
+
+        function loginStatusLabel(isOnline) {
+            return isOnline
+                ? '<span class="login-status login-status-online">Přihlášen</span>'
+                : '<span class="login-status login-status-offline">Registrován</span>';
+        }
+
+        function answerStatusLabel(status) {
+            if (status === 'answered') return '<span class="answer-status answer-status-done">Odpověděl</span>';
+            if (status === 'typing') return '<span class="answer-status answer-status-typing">Píše odpověď</span>';
+            if (status === 'waiting') return '<span class="answer-status answer-status-waiting">Neodpověděl</span>';
+            return '<span class="answer-status">—</span>';
         }
 
         function formatDuration(seconds) {

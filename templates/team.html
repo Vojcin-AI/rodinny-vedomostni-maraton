@@ -21,7 +21,7 @@
             <hr>
             <h3>Přihlásit předem vytvořený tým</h3>
             <div class="form-group">
-                <input type="text" id="teamLoginCode" placeholder="Přihlašovací kód týmu" class="input-field" maxlength="8" autocomplete="one-time-code">
+                <input type="text" id="teamLoginCode" placeholder="Čtyřmístný PIN týmu" class="input-field" maxlength="4" inputmode="numeric" pattern="[0-9]{4}" autocomplete="one-time-code">
                 <button onclick="loginTeam()" class="btn btn-secondary">Přihlásit tým</button>
             </div>
             <div id="loginError" class="error-message"></div>
@@ -77,6 +77,7 @@
         let quizState = 'waiting';
         let answered = false;
         let activityTimeout = null;
+        let presenceInterval = null;
 
         // ==================== REGISTRATION ====================
         function registerTeam() {
@@ -106,9 +107,9 @@
         }
 
         function loginTeam() {
-            const loginCode = document.getElementById('teamLoginCode').value.trim().toUpperCase();
+            const loginCode = document.getElementById('teamLoginCode').value.trim();
             if (!loginCode) {
-                document.getElementById('loginError').textContent = 'Zadej přihlašovací kód týmu.';
+                document.getElementById('loginError').textContent = 'Zadej čtyřmístný PIN týmu.';
                 return;
             }
 
@@ -138,7 +139,19 @@
             document.getElementById('registrationSection').style.display = 'none';
             document.getElementById('playingSection').style.display = 'block';
             document.getElementById('teamNameDisplay').textContent = `👋 Ahoj, ${teamName}!`;
+            updatePresence();
+            clearInterval(presenceInterval);
+            presenceInterval = setInterval(updatePresence, 5000);
             startPolling();
+        }
+
+        function updatePresence() {
+            if (!teamId) return;
+            fetch(`${API_BASE}/team/presence`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ team_id: teamId })
+            }).catch(error => console.error('Aktualizace přihlášení týmu selhala:', error));
         }
 
         // ==================== POLLING ====================

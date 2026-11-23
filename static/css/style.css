@@ -462,6 +462,30 @@ p {
     text-align: right;
 }
 
+.login-status,
+.answer-status {
+    display: inline-block;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.login-status-online,
+.answer-status-done {
+    color: #16803c;
+}
+
+.login-status-offline {
+    color: #7f8c8d;
+}
+
+.answer-status-waiting {
+    color: #c0392b;
+}
+
+.answer-status-typing {
+    color: #b9770e;
+}
+
 .waiting-box {
     text-align: center;
     padding: 3rem 2rem;

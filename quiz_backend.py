@@ -105,16 +105,19 @@ class QuizData:
             'login_code': None,
             'typing_question_id': None,
             'last_activity_at': None,
+            'last_seen_at': None,
             'registered_at': datetime.now().isoformat()
         }
         return team_id
 
     def create_team_with_login_code(self, team_name):
-        """Vytvoř předem tým s kódem pro přihlášení."""
-        alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-        login_code = ''.join(secrets.choice(alphabet) for _ in range(8))
+        """Vytvoř předem tým se čtyřmístným PINem pro přihlášení."""
+        if len(self.team_access_codes) >= 10000:
+            raise ValueError('Došly dostupné čtyřmístné PINy.')
+
+        login_code = f'{secrets.randbelow(10000):04d}'
         while login_code in self.team_access_codes:
-            login_code = ''.join(secrets.choice(alphabet) for _ in range(8))
+            login_code = f'{secrets.randbelow(10000):04d}'
 
         team_id = self.register_team(team_name)
         self.teams[team_id]['login_code'] = login_code
@@ -278,7 +281,7 @@ def admin_leaderboard():
 
     for team in teams:
         team_data = quiz_data.teams[team['team_id']]
-        team['login_code'] = team_data['login_code']
+        team['login_status'] = is_team_online(team_data)
         if quiz_data.quiz_state != 'playing' or current_question_id is None:
             team['answer_status'] = 'inactive'
         elif current_question_id in team_data['answers']:
@@ -304,10 +307,35 @@ def admin_leaderboard():
 @app.route('/api/leaderboard', methods=['GET'])
 def public_leaderboard():
     """Veřejné skóre bez interních stavů a přihlašovacích kódů."""
+    teams = quiz_data.get_leaderboard()
+    current_question_id = (
+        quiz_data.current_question['id'] if quiz_data.current_question else None
+    )
+    for team in teams:
+        team_data = quiz_data.teams[team['team_id']]
+        team['login_status'] = is_team_online(team_data)
+        if quiz_data.quiz_state != 'playing' or current_question_id is None:
+            team['answer_status'] = 'inactive'
+        elif current_question_id in team_data['answers']:
+            team['answer_status'] = 'answered'
+        elif (
+            team_data.get('typing_question_id') == current_question_id
+            and team_data.get('last_activity_at') is not None
+            and datetime.now().timestamp() - team_data['last_activity_at'] <= 10
+        ):
+            team['answer_status'] = 'typing'
+        else:
+            team['answer_status'] = 'waiting'
+
     return jsonify({
-        'leaderboard': quiz_data.get_leaderboard(),
+        'leaderboard': teams,
         'quiz_state': quiz_data.quiz_state
     })
+
+def is_team_online(team):
+    """Tým je online, pokud se ozval během posledních 20 sekund."""
+    last_seen_at = team.get('last_seen_at')
+    return last_seen_at is not None and time.time() - last_seen_at <= 20
 
 @app.route('/api/admin/teams', methods=['POST'])
 def admin_create_team():
@@ -324,7 +352,10 @@ def admin_create_team():
     if len(team_name) > 30:
         return jsonify({'error': 'Jméno týmu může mít nejvýše 30 znaků.'}), 400
 
-    team_id, login_code = quiz_data.create_team_with_login_code(team_name)
+    try:
+        team_id, login_code = quiz_data.create_team_with_login_code(team_name)
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 409
     return jsonify({
         'success': True,
         'team_id': team_id,
@@ -390,6 +421,7 @@ def team_register():
         return jsonify({'error': 'Jméno týmu je povinné'}), 400
     
     team_id = quiz_data.register_team(team_name)
+    quiz_data.teams[team_id]['last_seen_at'] = time.time()
     
     return jsonify({
         'success': True,
@@ -401,16 +433,35 @@ def team_register():
 def team_login():
     """Přihlas tým vytvořený administrátorem."""
     data = request.json or {}
-    login_code = data.get('login_code', '').strip().upper()
+    raw_login_code = data.get('login_code', '')
+    if not isinstance(raw_login_code, str):
+        return jsonify({'error': 'PIN musí obsahovat přesně 4 číslice.'}), 400
+    login_code = raw_login_code.strip()
+    if len(login_code) != 4 or not login_code.isdigit():
+        return jsonify({'error': 'PIN musí obsahovat přesně 4 číslice.'}), 400
     team_id = quiz_data.team_access_codes.get(login_code)
     if not team_id:
-        return jsonify({'error': 'Přihlašovací kód nebyl nalezen.'}), 404
+        return jsonify({'error': 'Přihlašovací PIN nebyl nalezen.'}), 404
+
+    quiz_data.teams[team_id]['last_seen_at'] = time.time()
 
     return jsonify({
         'success': True,
         'team_id': team_id,
         'team_name': quiz_data.teams[team_id]['name']
     })
+
+@app.route('/api/team/presence', methods=['POST'])
+def team_presence():
+    """Obnov stav online týmu."""
+    data = request.json or {}
+    team_id = data.get('team_id')
+    team = quiz_data.teams.get(team_id)
+    if team is None:
+        return jsonify({'error': 'Tým nenalezen.'}), 404
+
+    team['last_seen_at'] = time.time()
+    return jsonify({'success': True})
 
 @app.route('/api/team/status', methods=['GET'])
 def team_status():
@@ -443,6 +494,7 @@ def team_activity():
     team = quiz_data.teams[team_id]
     team['typing_question_id'] = question_id
     team['last_activity_at'] = datetime.now().timestamp()
+    team['last_seen_at'] = time.time()
     return jsonify({'success': True})
 
 @app.route('/api/team/submit-answer', methods=['POST'])
@@ -471,6 +523,7 @@ def team_submit_answer():
     
     if quiz_data.current_question_started_at is None:
         return jsonify({'error': 'Čas otázky se nepodařilo načíst. Kontaktuj moderátora.'}), 409
+    quiz_data.teams[team_id]['last_seen_at'] = time.time()
     response_time_seconds = round(
         max(0.0, time.monotonic() - quiz_data.current_question_started_at), 2
     )

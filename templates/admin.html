@@ -39,10 +39,10 @@
                     <h3>➕ Přidat tým ručně</h3>
                     <div class="form-group">
                         <input type="text" id="newTeamName" placeholder="Jméno týmu" class="input-field" maxlength="30">
-                        <button onclick="addTeam()" class="btn btn-secondary" id="addTeamBtn">Vytvořit tým a kód</button>
+                        <button onclick="addTeam()" class="btn btn-secondary" id="addTeamBtn">Vytvořit tým a PIN</button>
                     </div>
                     <div id="teamAddFeedback" class="info-text" aria-live="polite"></div>
-                    <p class="info-text">Tým otevře běžnou stránku /team, zvolí přihlášení a zadá svůj kód.</p>
+                    <p class="info-text">Tým otevře běžnou stránku /team a zadá svůj čtyřmístný PIN.</p>
                 </div>
 
                 <!-- Správa Kvízu -->
@@ -80,10 +80,10 @@
                         <tr>
                             <th>#</th>
                             <th>Tým</th>
+                            <th>Přihlášení</th>
                             <th>Stav odpovědi</th>
                             <th>Celkový čas (online)</th>
                             <th>Skóre</th>
-                            <th>Přihlašovací kód</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -160,7 +160,7 @@
             .then(data => {
                 nameInput.value = '';
                 feedback.textContent =
-                    `Tým ${data.team_name} je připraven. Přihlašovací kód: ${data.login_code}`;
+                    `Tým ${data.team_name} je připraven. Přihlašovací PIN: ${data.login_code}`;
                 updateLeaderboard();
             })
             .catch(error => {
@@ -293,10 +293,10 @@
                         <tr>
                             <td>${team.position}</td>
                             <td>${escapeHtml(team.name)}</td>
+                            <td>${loginStatusLabel(team.login_status)}</td>
                             <td>${answerStatusLabel(team.answer_status)}</td>
                             <td>${formatDuration(team.total_response_time_seconds)}</td>
                             <td><strong>${team.score}</strong></td>
-                            <td>${team.login_code ? `<code>${escapeHtml(team.login_code)}</code>` : '—'}</td>
                         </tr>
                     `).join('');
                 }
@@ -305,10 +305,16 @@
         }
 
         function answerStatusLabel(status) {
-            if (status === 'answered') return '✅ Odpověděl';
-            if (status === 'typing') return '✍️ Píše odpověď';
-            if (status === 'waiting') return '⏳ Čeká na odpověď';
-            return '—';
+            if (status === 'answered') return '<span class="answer-status answer-status-done">Odpověděl</span>';
+            if (status === 'typing') return '<span class="answer-status answer-status-typing">Píše odpověď</span>';
+            if (status === 'waiting') return '<span class="answer-status answer-status-waiting">Neodpověděl</span>';
+            return '<span class="answer-status">—</span>';
+        }
+
+        function loginStatusLabel(isOnline) {
+            return isOnline
+                ? '<span class="login-status login-status-online">Přihlášen</span>'
+                : '<span class="login-status login-status-offline">Registrován</span>';
         }
 
         function escapeHtml(value) {
