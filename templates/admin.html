@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - Rodinný Vědomostní Maraton</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="admin-container">
+        <!-- Login -->
+        <div id="loginSection" class="admin-section">
+            <h2>🔐 Admin Přihlášení</h2>
+            <div class="form-group">
+                <input type="password" id="adminPassword" placeholder="Heslo" class="input-field">
+                <button onclick="adminLogin()" class="btn btn-primary">Přihlásit se</button>
+            </div>
+            <div id="loginError" class="error-message"></div>
+        </div>
+
+        <!-- Admin Dashboard -->
+        <div id="adminPanel" class="admin-section" style="display: none;">
+            <div class="admin-header">
+                <h2>🎛️ Admin Panel</h2>
+                <button onclick="adminLogout()" class="btn btn-small">Odhlásit se</button>
+            </div>
+
+            <div class="admin-controls">
+                <!-- QR Kód -->
+                <div class="control-box">
+                    <h3>📱 QR Kód pro Týmy</h3>
+                    <div id="qrCodeContainer" style="text-align: center;">
+                        <button onclick="generateQRCode()" class="btn btn-secondary">Vygeneruj QR Kód</button>
+                    </div>
+                    <div id="qrCodeDisplay"></div>
+                </div>
+
+                <!-- Správa Kvízu -->
+                <div class="control-box">
+                    <h3>🎮 Správa Kvízu</h3>
+                    <div class="button-group">
+                        <button onclick="startQuiz()" class="btn btn-success" id="startBtn">Spustit Kvíz</button>
+                        <button onclick="nextQuestion()" class="btn btn-primary" id="nextBtn" style="display: none;">Další Otázka →</button>
+                        <button onclick="endQuiz()" class="btn btn-danger" id="endBtn" style="display: none;">Ukončit Kvíz</button>
+                        <button onclick="resetQuiz()" class="btn btn-secondary">Reset</button>
+                    </div>
+                </div>
+
+                <!-- Aktuální Otázka -->
+                <div class="control-box">
+                    <h3>❓ Aktuální Otázka</h3>
+                    <div id="currentQuestionDisplay" class="question-display">
+                        <p><em>Žádná otázka není aktivní</em></p>
+                    </div>
+                    <div id="timerDisplay" class="timer">0s</div>
+                </div>
+
+                <!-- Počet Registrovaných Týmů -->
+                <div class="control-box">
+                    <h3>👥 Registrované Týmy</h3>
+                    <div id="teamsCount" class="stat-box">0 týmů</div>
+                </div>
+            </div>
+
+            <!-- Leaderboard -->
+            <div class="leaderboard-container">
+                <h3>🏆 Leaderboard</h3>
+                <table id="adminLeaderboard" class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>Tým</th>
+                            <th>Skóre</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 20px; color: #999;">
+                                Leaderboard se zobrazí po spuštění kvízu
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let adminLoggedIn = false;
+        let quizRunning = false;
+        let currentQuestion = null;
+        let timerInterval = null;
+        let timeLeft = 30;
+
+        // ==================== ADMIN LOGIN ====================
+        function adminLogin() {
+            const password = document.getElementById('adminPassword').value;
+            fetch(`${API_BASE}/admin/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    adminLoggedIn = true;
+                    document.getElementById('loginSection').style.display = 'none';
+                    document.getElementById('adminPanel').style.display = 'block';
+                    updateLeaderboard();
+                } else {
+                    document.getElementById('loginError').textContent = '❌ Špatné heslo!';
+                }
+            });
+        }
+
+        function adminLogout() {
+            adminLoggedIn = false;
+            document.getElementById('loginSection').style.display = 'block';
+            document.getElementById('adminPanel').style.display = 'none';
+            document.getElementById('adminPassword').value = '';
+        }
+
+        // ==================== QUIZ CONTROL ====================
+        function startQuiz() {
+            fetch(`${API_BASE}/admin/start-quiz`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                quizRunning = true;
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('nextBtn').style.display = 'inline-block';
+                document.getElementById('endBtn').style.display = 'inline-block';
+                alert('✅ Kvíz spuštěn! Týmy se mohou registrovat.');
+                nextQuestion();
+            });
+        }
+
+        function nextQuestion() {
+            fetch(`${API_BASE}/admin/next-question`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    currentQuestion = data.question;
+                    updateQuestionDisplay();
+                    startTimer();
+                    updateLeaderboard();
+                } else if (data.quiz_state === 'finished') {
+                    alert('✅ Všechny otázky zodpovězeny!');
+                    endQuiz();
+                }
+            });
+        }
+
+        function endQuiz() {
+            fetch(`${API_BASE}/admin/end-quiz`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+            .then(r => r.json())
+            .then(data => {
+                quizRunning = false;
+                clearInterval(timerInterval);
+                document.getElementById('nextBtn').style.display = 'none';
+                document.getElementById('endBtn').style.display = 'none';
+                document.getElementById('startBtn').style.display = 'inline-block';
+                alert('🎉 Kvíz ukončen! Vítěz je vybírán...');
+                updateLeaderboard();
+            });
+        }
+
+        function resetQuiz() {
+            if (confirm('Jsi si jistý/á? Vše se resetuje.')) {
+                fetch(`${API_BASE}/admin/reset`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                })
+                .then(r => r.json())
+                .then(data => {
+                    quizRunning = false;
+                    clearInterval(timerInterval);
+                    document.getElementById('startBtn').style.display = 'inline-block';
+                    document.getElementById('nextBtn').style.display = 'none';
+                    document.getElementById('endBtn').style.display = 'none';
+                    document.getElementById('currentQuestionDisplay').innerHTML = '<p><em>Žádná otázka není aktivní</em></p>';
+                    document.getElementById('timerDisplay').textContent = '0s';
+                    updateLeaderboard();
+                    alert('✅ Kvíz resetován');
+                });
+            }
+        }
+
+        // ==================== TIMER ====================
+        function startTimer() {
+            clearInterval(timerInterval);
+            timeLeft = 30;
+            updateTimerDisplay();
+            
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    alert('⏱️ Čas vypršel! Přejdi na další otázku.');
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById('timerDisplay');
+            display.textContent = timeLeft + 's';
+            if (timeLeft <= 10) {
+                display.style.color = '#e74c3c';
+            } else {
+                display.style.color = '#27ae60';
+            }
+        }
+
+        // ==================== DISPLAY ====================
+        function updateQuestionDisplay() {
+            if (currentQuestion) {
+                document.getElementById('currentQuestionDisplay').innerHTML = `
+                    <div class="question-box">
+                        <div class="question-number">Otázka ${currentQuestion.id}</div>
+                        <div class="question-text">${currentQuestion.text}</div>
+                        <div class="question-type">Typ: ${currentQuestion.type}</div>
+                        <div class="correct-answers">
+                            Správné odpovědi: ${currentQuestion.correct_answers.join(', ')}
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        // ==================== LEADERBOARD ====================
+        function updateLeaderboard() {
+            fetch(`${API_BASE}/admin/leaderboard`)
+            .then(r => r.json())
+            .then(data => {
+                // Update teams count
+                document.getElementById('teamsCount').textContent = `${Object.keys(data.leaderboard).length} týmů`;
+                
+                // Update leaderboard table
+                const tbody = document.querySelector('#adminLeaderboard tbody');
+                if (data.leaderboard.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="3" style="text-align: center; padding: 20px; color: #999;">Zatím žádné týmy</td></tr>';
+                } else {
+                    tbody.innerHTML = data.leaderboard.map(team => `
+                        <tr>
+                            <td>${team.position}</td>
+                            <td>${team.name}</td>
+                            <td><strong>${team.score}</strong></td>
+                        </tr>
+                    `).join('');
+                }
+            });
+        }
+
+        // ==================== QR CODE ====================
+        function generateQRCode() {
+            fetch(`${API_BASE}/admin/qr-code`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('qrCodeDisplay').innerHTML = `
+                    <div class="qr-box">
+                        <img src="${data.qr_code}" alt="QR Code" style="max-width: 300px;">
+                        <p>Odkaz: <code>${data.url}</code></p>
+                        <button onclick="window.print()" class="btn btn-secondary">🖨️ Tisk</button>
+                    </div>
+                `;
+            });
+        }
+
+        // Auto-refresh leaderboard
+        setInterval(updateLeaderboard, 2000);
+    </script>
+</body>
+</html>

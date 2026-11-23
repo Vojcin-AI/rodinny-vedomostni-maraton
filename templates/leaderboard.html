@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Leaderboard - Rodinný Vědomostní Maraton</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="leaderboard-container full-screen">
+        <div class="leaderboard-header">
+            <h1>🏆 LEADERBOARD 🏆</h1>
+            <p>Rodinný Vědomostní Maraton</p>
+        </div>
+
+        <table id="leaderboardTable" class="leaderboard-table leaderboard-large">
+            <thead>
+                <tr>
+                    <th class="position-col">#</th>
+                    <th class="team-col">🎯 TÝM</th>
+                    <th class="score-col">📊 SKÓRE</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td colspan="3" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
+                        ⏳ Čeká se na start kvízu...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="leaderboard-status">
+            <span id="quizStatus" class="status-badge">Připraveno</span>
+            <span id="quizTime" class="status-time"></span>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        
+        function updateLeaderboard() {
+            fetch(`${API_BASE}/admin/leaderboard`)
+            .then(r => r.json())
+            .then(data => {
+                const tbody = document.querySelector('#leaderboardTable tbody');
+                
+                // Update status
+                const statusEl = document.getElementById('quizStatus');
+                if (data.quiz_state === 'playing') {
+                    statusEl.textContent = '🎮 HRAJE SE';
+                    statusEl.className = 'status-badge status-playing';
+                } else if (data.quiz_state === 'finished') {
+                    statusEl.textContent = '🎉 SKONČENO';
+                    statusEl.className = 'status-badge status-finished';
+                } else {
+                    statusEl.textContent = '⏳ Připraveno';
+                    statusEl.className = 'status-badge';
+                }
+                
+                // Update leaderboard
+                if (data.leaderboard.length === 0) {
+                    tbody.innerHTML = `
+                        <tr>
+                            <td colspan="3" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
+                                ⏳ Čeká se na registraci týmů...
+                            </td>
+                        </tr>
+                    `;
+                } else {
+                    tbody.innerHTML = data.leaderboard.map((team, idx) => `
+                        <tr class="leaderboard-row rank-${idx + 1}">
+                            <td class="position-col">
+                                <div class="medal">
+                                    ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                                </div>
+                            </td>
+                            <td class="team-col">${team.name}</td>
+                            <td class="score-col">
+                                <strong>${team.score}</strong>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            })
+            .catch(e => {
+                console.error('Leaderboard fetch error:', e);
+            });
+        }
+
+        // Initial load
+        updateLeaderboard();
+        
+        // Auto-refresh every 1 second
+        setInterval(updateLeaderboard, 1000);
+    </script>
+</body>
+</html>

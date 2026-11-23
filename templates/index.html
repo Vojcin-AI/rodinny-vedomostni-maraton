@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rodinný Vědomostní Maraton</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="hero">
+            <h1>🎬 RODINNÝ VĚDOMOSTNÍ MARATON 🎮</h1>
+            <p class="subtitle">Quiz Night - Rodinná Edice</p>
+            
+            <div class="button-group">
+                <a href="/admin" class="btn btn-primary">🎛️ Admin Panel</a>
+                <a href="/team" class="btn btn-secondary">📱 Registrace Týmu</a>
+                <a href="/leaderboard" class="btn btn-accent">🏆 Leaderboard</a>
+            </div>
+        </div>
+        
+        <div class="info-box">
+            <h2>ℹ️ Jak to funguje?</h2>
+            <ol>
+                <li><strong>Admin</strong> se přihlásí do panelu a spustí kvíz</li>
+                <li><strong>Týmy</strong> si naskenují QR kód a zaregistrují se</li>
+                <li><strong>Admin</strong> postupně pouští otázky (30 sekund na odpověď)</li>
+                <li><strong>Týmy</strong> odpovídají na mobilech v reálném čase</li>
+                <li><strong>Leaderboard</strong> se aktualizuje automaticky</li>
+                <li>Po skončení: <strong>Vítěz se určí hned!</strong> 🏆</li>
+            </ol>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registrace Týmu - Rodinný Vědomostní Maraton</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="team-container">
+        <!-- Registrace -->
+        <div id="registrationSection" class="team-section">
+            <h2>📱 Registrace Týmu</h2>
+            <div class="form-group">
+                <input type="text" id="teamName" placeholder="Jméno vašeho týmu" class="input-field" maxlength="30">
+                <button onclick="registerTeam()" class="btn btn-primary">Zaregistrovat se 🎮</button>
+            </div>
+            <div id="registerError" class="error-message"></div>
+            <p class="info-text">💡 Zadej jméno, které chceš vidět na leaderboardu</p>
+        </div>
+
+        <!-- Hrací Interface -->
+        <div id="playingSection" class="team-section" style="display: none;">
+            <div class="team-header">
+                <h2 id="teamNameDisplay"></h2>
+                <div class="team-score">
+                    Skóre: <span id="teamScore">0</span> bodů
+                </div>
+            </div>
+
+            <!-- Čeká se na otázku -->
+            <div id="waitingForQuestion" class="waiting-box">
+                <h3>⏳ Čekáme na otázku...</h3>
+                <p>Admin právě spouští kvíz. Tvoje odpovědi se budou odesílat automaticky.</p>
+                <div class="spinner"></div>
+            </div>
+
+            <!-- Otázka a Odpověď -->
+            <div id="questionBox" class="question-box" style="display: none;">
+                <div id="questionText" class="question-text"></div>
+                
+                <div class="timer-box">
+                    <div id="questionTimer" class="timer-large">30</div>
+                    <div class="timer-label">sekund na odpověď</div>
+                </div>
+
+                <div class="answer-section">
+                    <input type="text" id="answerInput" placeholder="Zadej odpověď..." class="input-field input-large">
+                    <button onclick="submitAnswer()" class="btn btn-primary btn-large">Odeslat Odpověď ✓</button>
+                </div>
+
+                <div id="answerFeedback" class="feedback-box" style="display: none;"></div>
+            </div>
+
+            <!-- Quiz Skončen -->
+            <div id="quizFinished" class="finished-box" style="display: none;">
+                <h3>🎉 Kvíz skončil!</h3>
+                <div id="finalScore" class="final-score"></div>
+                <p>Zkoukni <a href="/leaderboard" target="_blank" class="link">leaderboard</a> a zjisti, jak si vedl tvůj tým! 🏆</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let teamId = null;
+        let teamName = null;
+        let currentQuestion = null;
+        let quizState = 'waiting';
+        let answered = false;
+        let questionTimer = null;
+        let timeLeft = 30;
+        const TIMER_DURATION = 30;
+
+        // ==================== REGISTRATION ====================
+        function registerTeam() {
+            const name = document.getElementById('teamName').value.trim();
+            
+            if (!name) {
+                document.getElementById('registerError').textContent = '❌ Zadej jméno týmu!';
+                return;
+            }
+
+            fetch(`${API_BASE}/team/register`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ team_name: name })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    teamId = data.team_id;
+                    teamName = name;
+                    
+                    // Switch to playing interface
+                    document.getElementById('registrationSection').style.display = 'none';
+                    document.getElementById('playingSection').style.display = 'block';
+                    document.getElementById('teamNameDisplay').textContent = `👋 Ahoj, ${teamName}!`;
+                    
+                    // Start polling for quiz status
+                    startPolling();
+                } else {
+                    document.getElementById('registerError').textContent = '❌ ' + data.error;
+                }
+            })
+            .catch(e => {
+                document.getElementById('registerError').textContent = '❌ Chyba připojení!';
+            });
+        }
+
+        // ==================== POLLING ====================
+        function startPolling() {
+            setInterval(() => {
+                fetch(`${API_BASE}/team/status`)
+                .then(r => r.json())
+                .then(data => {
+                    quizState = data.quiz_state;
+                    
+                    if (data.quiz_state === 'playing' && data.current_question) {
+                        if (currentQuestion?.id !== data.current_question.id) {
+                            // Nová otázka!
+                            currentQuestion = data.current_question;
+                            answered = false;
+                            displayQuestion();
+                        }
+                    } else if (data.quiz_state === 'finished') {
+                        finishQuiz();
+                    }
+                });
+                
+                // Update score
+                if (teamId) {
+                    fetch(`${API_BASE}/team/score/${teamId}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        document.getElementById('teamScore').textContent = data.score;
+                    });
+                }
+            }, 1000);
+        }
+
+        // ==================== QUESTION DISPLAY ====================
+        function displayQuestion() {
+            document.getElementById('waitingForQuestion').style.display = 'none';
+            document.getElementById('questionBox').style.display = 'block';
+            document.getElementById('quizFinished').style.display = 'none';
+            document.getElementById('answerFeedback').style.display = 'none';
+            
+            document.getElementById('questionText').textContent = currentQuestion.text;
+            document.getElementById('answerInput').value = '';
+            document.getElementById('answerInput').disabled = false;  // ENABLE input
+            
+            const submitBtn = document.querySelector('button[onclick="submitAnswer()"]');
+            submitBtn.disabled = false;  // ENABLE button
+            
+            document.getElementById('answerInput').focus();
+            
+            startQuestionTimer();
+        }
+
+        function startQuestionTimer() {
+            clearInterval(questionTimer);
+            timeLeft = TIMER_DURATION;
+            updateTimerDisplay();
+            
+            questionTimer = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                
+                if (timeLeft <= 0) {
+                    clearInterval(questionTimer);
+                    if (!answered) {
+                        document.getElementById('answerInput').disabled = true;
+                    }
+                }
+            }, 1000);
+        }
+
+        function updateTimerDisplay() {
+            const display = document.getElementById('questionTimer');
+            display.textContent = timeLeft;
+            
+            if (timeLeft <= 10) {
+                display.style.color = '#e74c3c';
+            } else {
+                display.style.color = '#27ae60';
+            }
+        }
+
+        // ==================== ANSWER SUBMISSION ====================
+        function submitAnswer() {
+            if (answered) {
+                alert('💭 Už jsi odpověděl/a na tuto otázku!');
+                return;
+            }
+
+            const answer = document.getElementById('answerInput').value.trim();
+            
+            if (!answer) {
+                alert('❌ Zadej odpověď!');
+                return;
+            }
+
+            answered = true;
+            clearInterval(questionTimer);
+
+            fetch(`${API_BASE}/team/submit-answer`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    team_id: teamId,
+                    question_id: currentQuestion.id,
+                    answer: answer
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                // Show feedback
+                const feedbackEl = document.getElementById('answerFeedback');
+                feedbackEl.style.display = 'block';
+                
+                if (data.is_correct) {
+                    feedbackEl.className = 'feedback-box feedback-correct';
+                    feedbackEl.innerHTML = `
+                        <h3>✅ SPRÁVNĚ!</h3>
+                        <p>Tvoje odpověď: <strong>${answer}</strong></p>
+                        <p>Nový skóre: <strong>${data.score}</strong> bodů</p>
+                    `;
+                } else {
+                    feedbackEl.className = 'feedback-box feedback-wrong';
+                    feedbackEl.innerHTML = `
+                        <h3>❌ Bohužel špatně</h3>
+                        <p>Tvoje odpověď: <strong>${answer}</strong></p>
+                        <p>Správná odpověď: <strong>${currentQuestion.correct_answers.join(', ')}</strong></p>
+                    `;
+                }
+
+                // Disable input
+                document.getElementById('answerInput').disabled = true;
+                document.querySelector('button[onclick="submitAnswer()"]').disabled = true;
+            });
+        }
+
+        // ==================== QUIZ END ====================
+        function finishQuiz() {
+            document.getElementById('waitingForQuestion').style.display = 'none';
+            document.getElementById('questionBox').style.display = 'none';
+            document.getElementById('quizFinished').style.display = 'block';
+            
+            const finalScore = document.getElementById('teamScore').textContent;
+            document.getElementById('finalScore').innerHTML = `
+                <div class="score-display">
+                    <div class="score-number">${finalScore}</div>
+                    <div class="score-label">bodů</div>
+                </div>
+            `;
+        }
+
+        // Load local team ID if exists
+        window.addEventListener('load', () => {
+            const savedTeamId = localStorage.getItem('teamId');
+            if (savedTeamId) {
+                // Auto-restore session (volitelné)
+            }
+        });
+    </script>
+</body>
+</html>
