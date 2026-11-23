@@ -19,11 +19,12 @@
                     <th class="position-col">#</th>
                     <th class="team-col">🎯 TÝM</th>
                     <th class="score-col">📊 SKÓRE</th>
+                    <th class="score-col">⏱️ ČAS ODPOVĚDÍ</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td colspan="3" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
+                    <td colspan="4" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
                         ⏳ Čeká se na start kvízu...
                     </td>
                 </tr>
@@ -40,7 +41,7 @@
         const API_BASE = '/api';
         
         function updateLeaderboard() {
-            fetch(`${API_BASE}/admin/leaderboard`)
+            fetch(`${API_BASE}/leaderboard`)
             .then(r => r.json())
             .then(data => {
                 const tbody = document.querySelector('#leaderboardTable tbody');
@@ -62,7 +63,7 @@
                 if (data.leaderboard.length === 0) {
                     tbody.innerHTML = `
                         <tr>
-                            <td colspan="3" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
+                            <td colspan="4" style="text-align: center; padding: 50px; color: #999; font-size: 18px;">
                                 ⏳ Čeká se na registraci týmů...
                             </td>
                         </tr>
@@ -75,10 +76,11 @@
                                     ${idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
                                 </div>
                             </td>
-                            <td class="team-col">${team.name}</td>
+                            <td class="team-col">${escapeHtml(team.name)}</td>
                             <td class="score-col">
                                 <strong>${team.score}</strong>
                             </td>
+                            <td class="score-col">${formatDuration(team.total_response_time_seconds)}</td>
                         </tr>
                     `).join('');
                 }
@@ -86,6 +88,26 @@
             .catch(e => {
                 console.error('Leaderboard fetch error:', e);
             });
+        }
+
+        function escapeHtml(value) {
+            return String(value).replace(/[&<>"']/g, character => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;'
+            })[character]);
+        }
+
+        function formatDuration(seconds) {
+            if (seconds === null || seconds === undefined) {
+                return '—';
+            }
+            const totalSeconds = Number(seconds) || 0;
+            const minutes = Math.floor(totalSeconds / 60);
+            const remainingSeconds = (totalSeconds % 60).toFixed(1);
+            return minutes ? `${minutes} min ${remainingSeconds} s` : `${remainingSeconds} s`;
         }
 
         // Initial load

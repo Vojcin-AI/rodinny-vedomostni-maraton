@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 import quiz_backend
 
@@ -7,7 +8,9 @@ class QuizFlowTest(unittest.TestCase):
     def setUp(self):
         self.data = quiz_backend.quiz_data
         self.data.teams = {}
+        self.data.team_access_codes = {}
         self.data.current_question = None
+        self.data.current_question_started_at = None
         self.data.question_index = 0
         self.data.quiz_state = 'waiting'
         self.client = quiz_backend.app.test_client()
@@ -19,7 +22,9 @@ class QuizFlowTest(unittest.TestCase):
 
     def tearDown(self):
         self.data.teams = {}
+        self.data.team_access_codes = {}
         self.data.current_question = None
+        self.data.current_question_started_at = None
         self.data.question_index = 0
         self.data.quiz_state = 'waiting'
 
@@ -70,6 +75,91 @@ class QuizFlowTest(unittest.TestCase):
         next_question = self.client.post('/api/admin/next-question')
         self.assertEqual(next_question.status_code, 200)
         self.assertEqual(next_question.get_json()['question']['id'], 2)
+
+    def test_admin_created_team_can_log_in_using_code(self):
+        response = self.client.post(
+            '/api/admin/teams',
+            json={'team_name': 'Předem připravený tým'},
+        )
+        self.assertEqual(response.status_code, 200)
+        credentials = response.get_json()
+
+        login = self.client.post(
+            '/api/team/login',
+            json={'login_code': credentials['login_code'].lower()},
+        )
+        self.assertEqual(login.status_code, 200)
+        self.assertEqual(login.get_json()['team_id'], credentials['team_id'])
+        self.assertEqual(login.get_json()['team_name'], 'Předem připravený tým')
+        self.assertEqual(len(self.data.teams), 1)
+        public_board = quiz_backend.app.test_client().get('/api/leaderboard')
+        self.assertEqual(public_board.status_code, 200)
+        public_team = public_board.get_json()['leaderboard'][0]
+        self.assertNotIn('login_code', public_team)
+
+    def test_response_time_is_accumulated_but_does_not_change_ranking(self):
+        first_team = self.register_team('Rychlý')
+        second_team = self.register_team('Pomalejší')
+        self.client.post('/api/admin/start-quiz')
+        with patch('quiz_backend.time.monotonic', return_value=100.0):
+            question = self.client.post('/api/admin/next-question').get_json()['question']
+
+        with patch('quiz_backend.time.monotonic', return_value=105.0):
+            first_answer = self.client.post(
+                '/api/team/submit-answer',
+                json={
+                    'team_id': first_team,
+                    'question_id': question['id'],
+                    'answer': 'Matěj',
+                },
+            )
+        with patch('quiz_backend.time.monotonic', return_value=102.5):
+            second_answer = self.client.post(
+                '/api/team/submit-answer',
+                json={
+                    'team_id': second_team,
+                    'question_id': question['id'],
+                    'answer': 'Matěj',
+                },
+            )
+
+        self.assertEqual(first_answer.get_json()['response_time_seconds'], 5.0)
+        self.assertEqual(second_answer.get_json()['response_time_seconds'], 2.5)
+
+        with patch('quiz_backend.time.monotonic', return_value=200.0):
+            second_question = self.client.post('/api/admin/next-question').get_json()['question']
+        with patch('quiz_backend.time.monotonic', return_value=206.75):
+            self.client.post(
+                '/api/team/submit-answer',
+                json={
+                    'team_id': first_team,
+                    'question_id': second_question['id'],
+                    'answer': 'Božena',
+                },
+            )
+        with patch('quiz_backend.time.monotonic', return_value=201.0):
+            self.client.post(
+                '/api/team/submit-answer',
+                json={
+                    'team_id': second_team,
+                    'question_id': second_question['id'],
+                    'answer': 'Božena',
+                },
+            )
+
+        leaderboard = self.client.get('/api/admin/leaderboard').get_json()['leaderboard']
+        teams_by_id = {team['team_id']: team for team in leaderboard}
+        self.assertEqual(teams_by_id[first_team]['total_response_time_seconds'], 11.75)
+        self.assertEqual(teams_by_id[second_team]['total_response_time_seconds'], 3.5)
+        self.assertEqual(leaderboard[0]['team_id'], first_team)
+
+    def test_manual_team_cannot_be_added_after_quiz_starts(self):
+        self.client.post('/api/admin/start-quiz')
+        response = self.client.post(
+            '/api/admin/teams',
+            json={'team_name': 'Pozdní tým'},
+        )
+        self.assertEqual(response.status_code, 409)
 
 
 if __name__ == '__main__':

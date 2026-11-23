@@ -10,21 +10,34 @@
     <div class="team-container">
         <!-- Registrace -->
         <div id="registrationSection" class="team-section">
-            <h2>📱 Registrace Týmu</h2>
+            <h2>📱 Přístup týmu</h2>
+            <h3>Založit nový tým</h3>
             <div class="form-group">
                 <input type="text" id="teamName" placeholder="Jméno vašeho týmu" class="input-field" maxlength="30">
-                <button onclick="registerTeam()" class="btn btn-primary">Zaregistrovat se 🎮</button>
+                <button onclick="registerTeam()" class="btn btn-primary">Zaregistrovat nový tým 🎮</button>
             </div>
             <div id="registerError" class="error-message"></div>
-            <p class="info-text">💡 Zadej jméno, které chceš vidět na leaderboardu</p>
+            <p class="info-text">Nebo se přihlas ke týmu, který předem vytvořil moderátor.</p>
+            <hr>
+            <h3>Přihlásit předem vytvořený tým</h3>
+            <div class="form-group">
+                <input type="text" id="teamLoginCode" placeholder="Přihlašovací kód týmu" class="input-field" maxlength="8" autocomplete="one-time-code">
+                <button onclick="loginTeam()" class="btn btn-secondary">Přihlásit tým</button>
+            </div>
+            <div id="loginError" class="error-message"></div>
         </div>
 
         <!-- Hrací Interface -->
         <div id="playingSection" class="team-section" style="display: none;">
             <div class="team-header">
                 <h2 id="teamNameDisplay"></h2>
-                <div class="team-score">
-                    Skóre: <span id="teamScore">0</span> bodů
+                <div>
+                    <div class="team-score">
+                        Skóre: <span id="teamScore">0</span> bodů
+                    </div>
+                    <div class="team-response-time">
+                        Celkový čas odpovědí online: <span id="teamResponseTime">—</span>
+                    </div>
                 </div>
             </div>
 
@@ -82,16 +95,7 @@
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    teamId = data.team_id;
-                    teamName = name;
-                    
-                    // Switch to playing interface
-                    document.getElementById('registrationSection').style.display = 'none';
-                    document.getElementById('playingSection').style.display = 'block';
-                    document.getElementById('teamNameDisplay').textContent = `👋 Ahoj, ${teamName}!`;
-                    
-                    // Start polling for quiz status
-                    startPolling();
+                    activateTeam(data.team_id, name);
                 } else {
                     document.getElementById('registerError').textContent = '❌ ' + data.error;
                 }
@@ -99,6 +103,42 @@
             .catch(e => {
                 document.getElementById('registerError').textContent = '❌ Chyba připojení!';
             });
+        }
+
+        function loginTeam() {
+            const loginCode = document.getElementById('teamLoginCode').value.trim().toUpperCase();
+            if (!loginCode) {
+                document.getElementById('loginError').textContent = 'Zadej přihlašovací kód týmu.';
+                return;
+            }
+
+            fetch(`${API_BASE}/team/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ login_code: loginCode })
+            })
+            .then(async response => {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Tým se nepodařilo přihlásit.');
+                }
+                return data;
+            })
+            .then(data => activateTeam(data.team_id, data.team_name))
+            .catch(error => {
+                document.getElementById('loginError').textContent = error.message;
+                console.error('Přihlášení týmu selhalo:', error);
+            });
+        }
+
+        function activateTeam(id, name) {
+            teamId = id;
+            teamName = name;
+            localStorage.setItem('teamId', teamId);
+            document.getElementById('registrationSection').style.display = 'none';
+            document.getElementById('playingSection').style.display = 'block';
+            document.getElementById('teamNameDisplay').textContent = `👋 Ahoj, ${teamName}!`;
+            startPolling();
         }
 
         // ==================== POLLING ====================
@@ -127,6 +167,8 @@
                     .then(r => r.json())
                     .then(data => {
                         document.getElementById('teamScore').textContent = data.score;
+                        document.getElementById('teamResponseTime').textContent =
+                            formatDuration(data.total_response_time_seconds);
                     });
                 }
             }, 1000);
@@ -182,8 +224,7 @@
                 return;
             }
             answered = true;
-            answered = true;
-            answered = true;
+            clearTimeout(activityTimeout);
 
             fetch(`${API_BASE}/team/submit-answer`, {
                 method: 'POST',
@@ -237,13 +278,34 @@
             `;
         }
 
-        // Load local team ID if exists
-        window.addEventListener('load', () => {
+        function formatDuration(seconds) {
+            if (seconds === null || seconds === undefined) {
+                return '—';
+            }
+            const totalSeconds = Number(seconds) || 0;
+            const minutes = Math.floor(totalSeconds / 60);
+            const remainingSeconds = (totalSeconds % 60).toFixed(1);
+            return minutes ? `${minutes} min ${remainingSeconds} s` : `${remainingSeconds} s`;
+        }
+
+        async function restoreTeamSession() {
             const savedTeamId = localStorage.getItem('teamId');
             if (savedTeamId) {
-                // Auto-restore session (volitelné)
+                try {
+                    const response = await fetch(`${API_BASE}/team/score/${savedTeamId}`);
+                    if (response.ok) {
+                        const team = await response.json();
+                        activateTeam(savedTeamId, team.team_name);
+                        return;
+                    }
+                } catch (error) {
+                    console.error('Obnovení týmu selhalo:', error);
+                }
+                localStorage.removeItem('teamId');
             }
-        });
+        }
+
+        window.addEventListener('load', restoreTeamSession);
     </script>
 </body>
 </html>

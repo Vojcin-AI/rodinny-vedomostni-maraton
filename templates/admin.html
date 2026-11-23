@@ -35,6 +35,16 @@
                     <div id="qrCodeDisplay"></div>
                 </div>
 
+                <div class="control-box">
+                    <h3>➕ Přidat tým ručně</h3>
+                    <div class="form-group">
+                        <input type="text" id="newTeamName" placeholder="Jméno týmu" class="input-field" maxlength="30">
+                        <button onclick="addTeam()" class="btn btn-secondary" id="addTeamBtn">Vytvořit tým a kód</button>
+                    </div>
+                    <div id="teamAddFeedback" class="info-text" aria-live="polite"></div>
+                    <p class="info-text">Tým otevře běžnou stránku /team, zvolí přihlášení a zadá svůj kód.</p>
+                </div>
+
                 <!-- Správa Kvízu -->
                 <div class="control-box">
                     <h3>🎮 Správa Kvízu</h3>
@@ -71,12 +81,14 @@
                             <th>#</th>
                             <th>Tým</th>
                             <th>Stav odpovědi</th>
+                            <th>Celkový čas (online)</th>
                             <th>Skóre</th>
+                            <th>Přihlašovací kód</th>
                         </tr>
                     </thead>
                     <tbody>
                         <tr>
-                            <td colspan="4" style="text-align: center; padding: 20px; color: #999;">
+                            <td colspan="6" style="text-align: center; padding: 20px; color: #999;">
                                 Leaderboard se zobrazí po spuštění kvízu
                             </td>
                         </tr>
@@ -122,6 +134,39 @@
             document.getElementById('loginSection').style.display = 'block';
             document.getElementById('adminPanel').style.display = 'none';
             document.getElementById('adminPassword').value = '';
+        }
+
+        function addTeam() {
+            const nameInput = document.getElementById('newTeamName');
+            const feedback = document.getElementById('teamAddFeedback');
+            const teamName = nameInput.value.trim();
+            if (!teamName) {
+                feedback.textContent = 'Zadej jméno týmu.';
+                return;
+            }
+
+            fetch(`${API_BASE}/admin/teams`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ team_name: teamName })
+            })
+            .then(async response => {
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || 'Tým se nepodařilo vytvořit.');
+                }
+                return data;
+            })
+            .then(data => {
+                nameInput.value = '';
+                feedback.textContent =
+                    `Tým ${data.team_name} je připraven. Přihlašovací kód: ${data.login_code}`;
+                updateLeaderboard();
+            })
+            .catch(error => {
+                feedback.textContent = error.message;
+                console.error('Vytvoření týmu selhalo:', error);
+            });
         }
 
         // ==================== QUIZ CONTROL ====================
@@ -236,18 +281,22 @@
                     `${data.answered_count} z ${data.registered_count} týmů odpovědělo`;
                 document.getElementById('nextBtn').disabled =
                     !data.all_answered || data.quiz_state !== 'playing';
+                document.getElementById('addTeamBtn').disabled =
+                    data.quiz_state !== 'waiting';
                 
                 // Update leaderboard table
                 const tbody = document.querySelector('#adminLeaderboard tbody');
                 if (data.leaderboard.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 20px; color: #999;">Zatím žádné týmy</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #999;">Zatím žádné týmy</td></tr>';
                 } else {
                     tbody.innerHTML = data.leaderboard.map(team => `
                         <tr>
                             <td>${team.position}</td>
                             <td>${escapeHtml(team.name)}</td>
                             <td>${answerStatusLabel(team.answer_status)}</td>
+                            <td>${formatDuration(team.total_response_time_seconds)}</td>
                             <td><strong>${team.score}</strong></td>
+                            <td>${team.login_code ? `<code>${escapeHtml(team.login_code)}</code>` : '—'}</td>
                         </tr>
                     `).join('');
                 }
@@ -270,6 +319,16 @@
                 '"': '&quot;',
                 "'": '&#39;'
             })[character]);
+        }
+
+        function formatDuration(seconds) {
+            if (seconds === null || seconds === undefined) {
+                return '—';
+            }
+            const totalSeconds = Number(seconds) || 0;
+            const minutes = Math.floor(totalSeconds / 60);
+            const remainingSeconds = (totalSeconds % 60).toFixed(1);
+            return minutes ? `${minutes} min ${remainingSeconds} s` : `${remainingSeconds} s`;
         }
 
         // ==================== QR CODE ====================
